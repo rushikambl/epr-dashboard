@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPR Dev Dashboard — Rushi & Nishi</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     FIREBASE CONFIG — REPLACE THESE VALUES WITH YOUR OWN
+     (see setup guide below the closing </html> tag)
+     ============================================================ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey:            "AIzaSyBeQOTgGSKAMzKMTn1HoHrsvvtP2x_GOMY",
+    authDomain:        "epr-dashboard.firebaseapp.com",
+    databaseURL:       "https://epr-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:         "epr-dashboard",
+    storageBucket:     "epr-dashboard.firebasestorage.app",
+    messagingSenderId: "225415166711",
+    appId:             "1:225415166711:web:21e08b872106fd5c7971f2"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  /* ---- expose helpers to global scope ---- */
+  window._fb = { db, ref, push, onValue, update, remove };
+  window.dispatchEvent(new Event('fb-ready'));
+</script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #0f0f13;
+    --surface:    #18181f;
+    --surface2:   #22222c;
+    --border:     rgba(255,255,255,0.08);
+    --border2:    rgba(255,255,255,0.14);
+    --text:       #e8e6f0;
+    --muted:      #7b788e;
+    --accent-r:   #c084fc;   /* Rushi — violet */
+    --accent-n:   #34d399;   /* Nishi — emerald */
+    --accent-r-bg:#1e1030;
+    --accent-n-bg:#0d2d22;
+    --high:       #f87171;
+    --high-bg:    #2d1212;
+    --med:        #fbbf24;
+    --med-bg:     #2a1f05;
+    --low:        #60a5fa;
+    --low-bg:     #0d1e33;
+    --font-head:  'Syne', sans-serif;
+    --font-mono:  'DM Mono', monospace;
+    --radius:     10px;
+    --radius-lg:  14px;
+  }
+
+  body {
+    font-family: var(--font-mono);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+  /* ---- LAYOUT ---- */
+  .shell { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+
+  /* ---- TOPBAR ---- */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 2rem; flex-wrap: wrap; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent-r);
+    box-shadow: 0 0 10px var(--accent-r);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .brand-title { font-family: var(--font-head); font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .brand-sub { font-size: 11px; color: var(--muted); margin-top: 1px; font-family: var(--font-mono); }
+
+  .users { display: flex; gap: 8px; }
+  .user-chip {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 99px;
+    border: 1px solid var(--border2); font-size: 12px;
+    font-family: var(--font-mono);
+  }
+  .user-chip.rushi { border-color: var(--accent-r); background: var(--accent-r-bg); color: var(--accent-r); }
+  .user-chip.nishi { border-color: var(--accent-n); background: var(--accent-n-bg); color: var(--accent-n); }
+  .online-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ---- STATS ---- */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 0.9rem 1rem;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 5px; }
+  .stat-val { font-family: var(--font-head); font-size: 28px; font-weight: 700; line-height: 1; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .v-violet { color: var(--accent-r); }
+  .v-green  { color: var(--accent-n); }
+  .v-amber  { color: var(--med); }
+  .v-red    { color: var(--high); }
+
+  /* ---- TABS ---- */
+  .tabs { display: flex; gap: 4px; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab {
+    padding: 7px 16px; font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+    border-bottom: 2px solid transparent; color: var(--muted); background: none; border-top: none; border-left: none; border-right: none;
+    transition: color .15s;
+  }
+  .tab.active { color: var(--accent-r); border-bottom-color: var(--accent-r); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* ---- SECTION ---- */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* ---- TWO-COL ---- */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* ---- PANEL ---- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1rem 1.25rem;
+    margin-bottom: 12px;
+  }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .panel-title { font-family: var(--font-head); font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+  .pill-btn {
+    font-family: var(--font-mono); font-size: 11px; padding: 4px 10px;
+    border-radius: 99px; border: 1px solid var(--border2); background: none;
+    color: var(--muted); cursor: pointer; transition: all .15s;
+  }
+  .pill-btn:hover { color: var(--text); border-color: var(--accent-r); }
+
+  /* ---- TASK ITEM ---- */
+  .task-item {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 9px 0; border-bottom: 1px solid var(--border);
+  }
+  .task-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .check {
+    width: 17px; height: 17px; border-radius: 5px;
+    border: 1.5px solid var(--border2); flex-shrink: 0;
+    margin-top: 1px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .check.done { background: var(--accent-n); border-color: var(--accent-n); }
+  .check.done::after {
+    content: ''; display: block; width: 8px; height: 5px;
+    border-left: 2px solid #0f0f13; border-bottom: 2px solid #0f0f13;
+    transform: rotate(-45deg) translateY(-1px);
+  }
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-size: 12px; color: var(--text); }
+  .task-title.done { text-decoration: line-through; color: var(--muted); }
+  .task-meta { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+  .badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; font-weight: 500; font-family: var(--font-mono); }
+  .b-high { background: var(--high-bg); color: var(--high); }
+  .b-med  { background: var(--med-bg);  color: var(--med); }
+  .b-low  { background: var(--low-bg);  color: var(--low); }
+  .b-r    { background: var(--accent-r-bg); color: var(--accent-r); }
+  .b-n    { background: var(--accent-n-bg); color: var(--accent-n); }
+  .b-tag  { background: var(--surface2); color: var(--muted); }
+  .task-date { font-size: 10px; color: var(--muted); }
+  .task-note-preview { font-size: 10px; color: var(--muted); font-style: italic; max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  /* ---- KANBAN ---- */
+  .kanban { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+  .kan-col { background: var(--surface2); border-radius: var(--radius); padding: 10px; }
+  .kan-col-head {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+  }
+  .kan-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .kd-todo   { background: var(--muted); }
+  .kd-prog   { background: var(--accent-r); }
+  .kd-review { background: var(--med); }
+  .kd-done   { background: var(--accent-n); }
+  .kan-count { background: var(--surface); border-radius: 99px; padding: 1px 7px; font-size: 10px; color: var(--muted); }
+  .kan-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px 10px; margin-bottom: 6px;
+    cursor: pointer; transition: border-color .15s;
+  }
+  .kan-card:hover { border-color: var(--border2); }
+  .kan-card:last-child { margin-bottom: 0; }
+  .kan-card-title { font-size: 11px; color: var(--text); line-height: 1.45; }
+  .kan-card-meta { margin-top: 5px; display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* ---- CHAT ---- */
+  .chat-messages {
+    min-height: 200px; max-height: 320px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 10px;
+    padding-bottom: 4px; margin-bottom: 12px;
+  }
+  .msg { display: flex; gap: 8px; align-items: flex-start; }
+  .msg.mine { flex-direction: row-reverse; }
+  .msg-avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500;
+  }
+  .av-r { background: var(--accent-r-bg); color: var(--accent-r); border: 1px solid var(--accent-r); }
+  .av-n { background: var(--accent-n-bg); color: var(--accent-n); border: 1px solid var(--accent-n); }
+  .msg-bubble {
+    max-width: 72%; padding: 8px 12px; border-radius: var(--radius);
+    font-size: 12px; line-height: 1.5;
+  }
+  .msg.mine .msg-bubble { background: var(--accent-r-bg); border: 1px solid rgba(192,132,252,.25); color: var(--text); }
+  .msg:not(.mine) .msg-bubble { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .msg-meta { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .msg.mine .msg-meta { text-align: right; }
+  .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-textarea {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px 10px; font-family: var(--font-mono);
+    font-size: 12px; color: var(--text); resize: none; height: 40px; min-height: 40px;
+    transition: border-color .15s;
+  }
+  .chat-textarea:focus { outline: none; border-color: var(--accent-r); }
+  .send-btn {
+    padding: 8px 14px; border-radius: var(--radius); border: none;
+    background: var(--accent-r); color: #0f0f13; font-family: var(--font-mono);
+    font-size: 12px; cursor: pointer; white-space: nowrap; font-weight: 500;
+  }
+  .send-btn:hover { opacity: .85; }
+
+  /* ---- NOTES ---- */
+  .note-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px 10px; font-family: var(--font-mono);
+    font-size: 12px; color: var(--text); resize: none; height: 72px;
+    margin-bottom: 8px;
+  }
+  .note-input:focus { outline: none; border-color: var(--accent-n); }
+  .notes-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; }
+  .note-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px;
+  }
+  .note-from { font-size: 10px; margin-bottom: 5px; }
+  .note-from .name-r { color: var(--accent-r); }
+  .note-from .name-n { color: var(--accent-n); }
+  .note-body { font-size: 12px; color: var(--text); line-height: 1.5; }
+  .note-time { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  /* ---- MODAL ---- */
+  .modal-bg {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.6); z-index: 200;
+    align-items: center; justify-content: center; padding: 1rem;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: var(--radius-lg); padding: 1.5rem; width: 100%; max-width: 440px;
+  }
+  .modal-title { font-family: var(--font-head); font-size: 16px; font-weight: 700; margin-bottom: 1.25rem; }
+  .form-row { margin-bottom: 10px; }
+  .form-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 5px; }
+  .form-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px 10px; font-family: var(--font-mono);
+    font-size: 12px; color: var(--text);
+  }
+  .form-input:focus { outline: none; border-color: var(--accent-r); }
+  select.form-input { cursor: pointer; }
+  textarea.form-input { resize: none; height: 60px; }
+  .two-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem; }
+  .btn-cancel {
+    padding: 7px 16px; border-radius: var(--radius); border: 1px solid var(--border2);
+    background: none; color: var(--muted); font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+  }
+  .btn-cancel:hover { color: var(--text); }
+  .btn-primary {
+    padding: 7px 16px; border-radius: var(--radius); border: none;
+    background: var(--accent-r); color: #0f0f13; font-family: var(--font-mono);
+    font-size: 12px; cursor: pointer; font-weight: 500;
+  }
+  .btn-primary:hover { opacity: .85; }
+
+  /* ---- STATUS BAR ---- */
+  .status-bar {
+    position: fixed; bottom: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: var(--radius); padding: 8px 14px;
+    font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+    z-index: 50;
+  }
+  .status-bar.connected { border-color: rgba(52,211,153,.3); color: var(--accent-n); }
+  .status-bar.error { border-color: rgba(248,113,113,.3); color: var(--high); }
+  .status-dot-bar { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ---- EMPTY STATE ---- */
+  .empty { text-align: center; padding: 2rem 0; color: var(--muted); font-size: 12px; }
+
+  /* ---- DELETE BTN ---- */
+  .del-btn {
+    opacity: 0; background: none; border: none; color: var(--high);
+    cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
+    flex-shrink: 0; transition: opacity .15s;
+  }
+  .task-item:hover .del-btn { opacity: 1; }
+
+  @media (max-width: 700px) {
+    .stats { grid-template-columns: 1fr 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .kanban { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 450px) {
+    .kanban { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div>
+        <div class="brand-title">EPR Dev Dashboard</div>
+        <div class="brand-sub">Rushi &amp; Nishi · internal workspace</div>
+      </div>
+    </div>
+    <div class="users">
+      <div class="user-chip rushi"><span class="online-dot"></span> Rushi</div>
+      <div class="user-chip nishi"><span class="online-dot"></span> Nishi</div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats" id="stats">
+    <div class="stat"><div class="stat-label">Total tasks</div><div class="stat-val v-violet" id="s-total">—</div></div>
+    <div class="stat"><div class="stat-label">Completed</div><div class="stat-val v-green" id="s-done">—</div><div class="stat-sub" id="s-pct"></div></div>
+    <div class="stat"><div class="stat-label">Rushi open</div><div class="stat-val v-violet" id="s-rushi">—</div></div>
+    <div class="stat"><div class="stat-label">Nishi open</div><div class="stat-val v-green" id="s-nishi">—</div></div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('tasks')">Tasks</button>
+    <button class="tab" onclick="switchTab('kanban')">Kanban</button>
+    <button class="tab" onclick="switchTab('chat')">Chat</button>
+    <button class="tab" onclick="switchTab('notes')">Notes</button>
+  </div>
+
+  <!-- TASKS TAB -->
+  <div class="section active" id="tab-tasks">
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title" style="color:var(--accent-r)">Rushi's tasks</span>
+          <button class="pill-btn" onclick="openModal('rushi')">+ add</button>
+        </div>
+        <div id="list-rushi"><div class="empty">No tasks yet</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title" style="color:var(--accent-n)">Nishi's tasks</span>
+          <button class="pill-btn" onclick="openModal('nishi')">+ add</button>
+        </div>
+        <div id="list-nishi"><div class="empty">No tasks yet</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KANBAN TAB -->
+  <div class="section" id="tab-kanban">
+    <div class="panel" style="padding:1rem">
+      <div class="kanban" id="kanban"></div>
+    </div>
+  </div>
+
+  <!-- CHAT TAB -->
+  <div class="section" id="tab-chat">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Team chat</span>
+        <span style="font-size:11px;color:var(--muted)">real-time · firebase</span>
+      </div>
+      <div class="chat-messages" id="chat-messages"><div class="empty">No messages yet — say hi!</div></div>
+      <div class="chat-input-row">
+        <select id="chat-from" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-family:var(--font-mono);font-size:12px;color:var(--text);cursor:pointer;">
+          <option value="rushi">Rushi</option>
+          <option value="nishi">Nishi</option>
+        </select>
+        <textarea class="chat-textarea" id="chat-input" placeholder="Type a message…" onkeydown="handleChatKey(event)"></textarea>
+        <button class="send-btn" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTES TAB -->
+  <div class="section" id="tab-notes">
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Share a note / detail</span></div>
+        <select id="note-from" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-family:var(--font-mono);font-size:12px;color:var(--text);margin-bottom:8px;">
+          <option value="rushi">From: Rushi</option>
+          <option value="nishi">From: Nishi</option>
+        </select>
+        <input class="form-input" id="note-title" placeholder="Subject / title" style="margin-bottom:8px;">
+        <textarea class="note-input" id="note-body" placeholder="Write a detail, spec, update, or reminder…"></textarea>
+        <button class="send-btn" style="width:100%" onclick="sendNote()">Post note</button>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Shared notes</span></div>
+        <div class="notes-list" id="notes-list"><div class="empty">No notes yet</div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .shell -->
+
+<!-- STATUS BAR -->
+<div class="status-bar" id="status-bar">
+  <span class="status-dot-bar"></span>
+  <span id="status-text">Connecting to Firebase…</span>
+</div>
+
+<!-- ADD TASK MODAL -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add task</div>
+    <div class="form-row">
+      <label class="form-label">Task title</label>
+      <input class="form-input" id="t-title" placeholder="e.g. Build inventory UI">
+    </div>
+    <div class="two-inputs">
+      <div class="form-row">
+        <label class="form-label">Assigned to</label>
+        <select class="form-input" id="t-assign">
+          <option value="rushi">Rushi</option>
+          <option value="nishi">Nishi</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Priority</label>
+        <select class="form-input" id="t-prio">
+          <option value="high">High</option>
+          <option value="med" selected>Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+    <div class="two-inputs">
+      <div class="form-row">
+        <label class="form-label">Due date</label>
+        <input class="form-input" id="t-due" type="date">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="t-status">
+          <option value="todo">To do</option>
+          <option value="inprog">In progress</option>
+          <option value="review">Review</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Module / tag</label>
+      <input class="form-input" id="t-tag" placeholder="e.g. Inventory, PO, Reports">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Notes</label>
+      <textarea class="form-input" id="t-notes" placeholder="Any extra context…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveTask()">Save task</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   STATE & HELPERS
+   ================================================================ */
+let tasks = {}, chats = {}, notes = {};
+let fbReady = false;
+
+const pbc = { high: 'b-high', med: 'b-med', low: 'b-low' };
+const now = () => new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['tasks','kanban','chat','notes'][i] === id);
+  });
+  document.querySelectorAll('.section').forEach(s => {
+    s.classList.toggle('active', s.id === 'tab-' + id);
+  });
+}
+
+/* ================================================================
+   FIREBASE INTEGRATION
+   ================================================================ */
+window.addEventListener('fb-ready', () => {
+  fbReady = true;
+  setStatus('connected', 'Firebase connected');
+  const { db, ref, onValue } = window._fb;
+
+  onValue(ref(db, 'tasks'), snap => {
+    tasks = snap.val() || {};
+    renderAll();
+  });
+  onValue(ref(db, 'chats'), snap => {
+    chats = snap.val() || {};
+    renderChat();
+  });
+  onValue(ref(db, 'notes'), snap => {
+    notes = snap.val() || {};
+    renderNotes();
+  });
+});
+
+// If Firebase doesn't connect in 4s, show offline mode
+setTimeout(() => {
+  if (!fbReady) setStatus('error', 'Not connected — add Firebase config');
+}, 4000);
+
+function setStatus(cls, msg) {
+  const bar = document.getElementById('status-bar');
+  bar.className = 'status-bar ' + cls;
+  document.getElementById('status-text').textContent = msg;
+}
+
+/* ================================================================
+   TASKS
+   ================================================================ */
+function openModal(assign) {
+  document.getElementById('modal-title').textContent = `Add task → ${assign === 'rushi' ? 'Rushi' : 'Nishi'}`;
+  document.getElementById('t-assign').value = assign;
+  ['t-title','t-tag','t-notes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('t-due').value = '';
+  document.getElementById('t-prio').value = 'med';
+  document.getElementById('t-status').value = 'todo';
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function saveTask() {
+  const title = document.getElementById('t-title').value.trim();
+  if (!title) return;
+  const task = {
+    title,
+    assign: document.getElementById('t-assign').value,
+    prio:   document.getElementById('t-prio').value,
+    status: document.getElementById('t-status').value,
+    due:    document.getElementById('t-due').value,
+    tag:    document.getElementById('t-tag').value.trim(),
+    notes:  document.getElementById('t-notes').value.trim(),
+    done:   false,
+    created: Date.now()
+  };
+  if (fbReady) {
+    const { db, ref, push } = window._fb;
+    push(ref(db, 'tasks'), task);
+  } else {
+    tasks['local_' + Date.now()] = task;
+    renderAll();
+  }
+  closeModal();
+}
+
+function toggleTask(key) {
+  const t = tasks[key];
+  if (!t) return;
+  const done = !t.done;
+  const status = done ? 'done' : 'inprog';
+  if (fbReady) {
+    const { db, ref, update } = window._fb;
+    update(ref(db, 'tasks/' + key), { done, status });
+  } else {
+    t.done = done; t.status = status;
+    renderAll();
+  }
+}
+
+function deleteTask(key) {
+  if (!confirm('Delete this task?')) return;
+  if (fbReady) {
+    const { db, ref, remove } = window._fb;
+    remove(ref(db, 'tasks/' + key));
+  } else {
+    delete tasks[key];
+    renderAll();
+  }
+}
+
+/* ================================================================
+   RENDER TASKS
+   ================================================================ */
+function renderTasks(listId, who) {
+  const el = document.getElementById(listId);
+  const items = Object.entries(tasks).filter(([,t]) => t.assign === who);
+  if (!items.length) { el.innerHTML = '<div class="empty">No tasks — add one above</div>'; return; }
+  el.innerHTML = items.sort((a,b) => (a[1].created||0)-(b[1].created||0)).map(([key,t]) => `
+    <div class="task-item">
+      <div class="check ${t.done?'done':''}" onclick="toggleTask('${key}')"></div>
+      <div class="task-body">
+        <div class="task-title ${t.done?'done':''}">${t.title}</div>
+        <div class="task-meta">
+          <span class="badge ${pbc[t.prio]}">${t.prio}</span>
+          <span class="badge ${t.assign==='rushi'?'b-r':'b-n'}">${t.assign}</span>
+          ${t.tag ? `<span class="badge b-tag">${t.tag}</span>` : ''}
+          ${t.due ? `<span class="task-date">due ${t.due}</span>` : ''}
+          ${t.notes ? `<span class="task-note-preview">${t.notes}</span>` : ''}
+        </div>
+      </div>
+      <button class="del-btn" onclick="deleteTask('${key}')" title="Delete">×</button>
+    </div>
+  `).join('');
+}
+
+/* ================================================================
+   RENDER KANBAN
+   ================================================================ */
+function renderKanban() {
+  const cols = [
+    { key:'todo',   label:'To do',      dot:'kd-todo' },
+    { key:'inprog', label:'In progress',dot:'kd-prog' },
+    { key:'review', label:'Review',     dot:'kd-review' },
+    { key:'done',   label:'Done',       dot:'kd-done' },
+  ];
+  document.getElementById('kanban').innerHTML = cols.map(c => {
+    const items = Object.entries(tasks).filter(([,t]) => t.status === c.key);
+    return `<div class="kan-col">
+      <div class="kan-col-head">
+        <span class="kan-dot ${c.dot}"></span>${c.label}
+        <span class="kan-count">${items.length}</span>
+      </div>
+      ${items.length ? items.map(([,t]) => `
+        <div class="kan-card">
+          <div class="kan-card-title">${t.title}</div>
+          <div class="kan-card-meta">
+            <span class="badge ${pbc[t.prio]}">${t.prio}</span>
+            <span class="badge ${t.assign==='rushi'?'b-r':'b-n'}">${t.assign}</span>
+            ${t.tag?`<span class="badge b-tag">${t.tag}</span>`:''}
+          </div>
+        </div>`).join('') : '<div style="font-size:11px;color:var(--muted);text-align:center;padding:12px 0">empty</div>'}
+    </div>`;
+  }).join('');
+}
+
+/* ================================================================
+   RENDER STATS
+   ================================================================ */
+function renderStats() {
+  const all = Object.values(tasks);
+  const total = all.length;
+  const done  = all.filter(t => t.done).length;
+  const rOpen = all.filter(t => t.assign==='rushi' && !t.done).length;
+  const nOpen = all.filter(t => t.assign==='nishi' && !t.done).length;
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-done').textContent  = done;
+  document.getElementById('s-pct').textContent   = total ? Math.round(done/total*100)+'% done' : '';
+  document.getElementById('s-rushi').textContent = rOpen;
+  document.getElementById('s-nishi').textContent = nOpen;
+}
+
+function renderAll() { renderStats(); renderTasks('list-rushi','rushi'); renderTasks('list-nishi','nishi'); renderKanban(); }
+
+/* ================================================================
+   CHAT
+   ================================================================ */
+function handleChatKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
+
+function sendChat() {
+  const text = document.getElementById('chat-input').value.trim();
+  const from = document.getElementById('chat-from').value;
+  if (!text) return;
+  const msg = { from, text, time: now(), ts: Date.now() };
+  if (fbReady) {
+    const { db, ref, push } = window._fb;
+    push(ref(db, 'chats'), msg);
+  } else {
+    chats['local_'+Date.now()] = msg;
+    renderChat();
+  }
+  document.getElementById('chat-input').value = '';
+}
+
+function renderChat() {
+  const el = document.getElementById('chat-messages');
+  const items = Object.values(chats).sort((a,b) => (a.ts||0)-(b.ts||0));
+  if (!items.length) { el.innerHTML = '<div class="empty">No messages yet</div>'; return; }
+  const viewerIs = document.getElementById('chat-from').value;
+  el.innerHTML = items.map(m => {
+    const mine = m.from === viewerIs;
+    return `<div class="msg ${mine?'mine':''}">
+      <div class="msg-avatar ${m.from==='rushi'?'av-r':'av-n'}">${m.from==='rushi'?'R':'N'}</div>
+      <div>
+        <div class="msg-bubble">${m.text}</div>
+        <div class="msg-meta">${m.from==='rushi'?'Rushi':'Nishi'} · ${m.time||''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('chat-from').addEventListener('change', renderChat);
+
+/* ================================================================
+   NOTES
+   ================================================================ */
+function sendNote() {
+  const title = document.getElementById('note-title').value.trim();
+  const body  = document.getElementById('note-body').value.trim();
+  const from  = document.getElementById('note-from').value;
+  if (!body) return;
+  const note = { from, title: title || 'Note', body, time: now(), ts: Date.now() };
+  if (fbReady) {
+    const { db, ref, push } = window._fb;
+    push(ref(db, 'notes'), note);
+  } else {
+    notes['local_'+Date.now()] = note;
+    renderNotes();
+  }
+  document.getElementById('note-body').value = '';
+  document.getElementById('note-title').value = '';
+}
+
+function renderNotes() {
+  const el = document.getElementById('notes-list');
+  const items = Object.values(notes).sort((a,b) => (b.ts||0)-(a.ts||0));
+  if (!items.length) { el.innerHTML = '<div class="empty">No notes yet</div>'; return; }
+  el.innerHTML = items.map(n => `
+    <div class="note-card">
+      <div class="note-from"><span class="${n.from==='rushi'?'name-r':'name-n'}">${n.from==='rushi'?'Rushi':'Nishi'}</span> · <strong style="color:var(--text)">${n.title}</strong></div>
+      <div class="note-body">${n.body}</div>
+      <div class="note-time">${n.time||''}</div>
+    </div>`).join('');
+}
+
+/* ================================================================
+   CLOSE MODAL ON OVERLAY CLICK
+   ================================================================ */
+document.getElementById('modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeModal(); });
+</script>
+
+</body>
+</html>
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║          FIREBASE SETUP GUIDE (step-by-step)                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+STEP 1 — Create a Firebase project
+  1. Go to  https://console.firebase.google.com
+  2. Click "Add project" → name it  epr-dashboard
+  3. Disable Google Analytics (not needed) → Create project
+
+STEP 2 — Enable Realtime Database
+  1. In the left sidebar → Build → Realtime Database
+  2. Click "Create database"
+  3. Choose a region (asia-south1 for India is closest)
+  4. Start in TEST MODE (allows open read/write for now)
+     → you can lock it down later with rules
+
+STEP 3 — Get your Firebase config
+  1. Click the gear icon (top left) → Project settings
+  2. Scroll down to "Your apps" → click the </> (Web) icon
+  3. Register app with any nickname, e.g.  epr-web
+  4. Firebase will show you a config object like:
+
+     const firebaseConfig = {
+       apiKey: "AIzaSy...",
+       authDomain: "epr-dashboard.firebaseapp.com",
+       databaseURL: "https://epr-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+       projectId: "epr-dashboard",
+       storageBucket: "epr-dashboard.appspot.com",
+       messagingSenderId: "123456789",
+       appId: "1:123:web:abc123"
+     };
+
+STEP 4 — Paste config into this file
+  1. Open  epr-dashboard.html  in any text editor
+  2. Find the block that says:  // 🔴 REPLACE THIS BLOCK WITH YOUR FIREBASE CONFIG
+  3. Replace the placeholder values with your actual values from Step 3
+
+STEP 5 — Set Firewall / Security Rules
+  1. Firebase Console → Realtime Database → Rules tab
+  2. Paste this to allow only Rushi & Nishi (no login needed):
+
+  {
+    "rules": {
+      ".read":  true,
+      ".write": true
+    }
+  }
+
+  (For production, use Firebase Authentication and lock it down further)
+
+STEP 6 — Open the file
+  Just open  epr-dashboard.html  in Chrome/Edge/Firefox.
+  Both of you open the same file (or host it on GitHub Pages for free).
+
+STEP 7 — Host for free on GitHub Pages (optional but recommended)
+  1. Create a GitHub repo → upload  epr-dashboard.html
+  2. Repo Settings → Pages → Source: main branch
+  3. Your dashboard will be live at:
+     https://YOUR_USERNAME.github.io/REPO_NAME/epr-dashboard.html
+  4. Share this URL with Nishi — you both use the same live URL
+     and all data syncs in real time via Firebase!
+
+══════════════════════════════════════════════════════════════
+-->
